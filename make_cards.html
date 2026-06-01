@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>名片製作工具</title>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+<style>
+    body { font-family: 'Microsoft JhengHei', sans-serif; padding: 20px; }
+    #drop-area { border: 2px dashed #999; padding: 30px; text-align: center; background: #f9f9f9; margin-bottom: 20px; }
+    .card-pair { display: flex; justify-content: space-between; margin-bottom: 5mm; page-break-inside: avoid; width: 100%; max-width: 21cm; }
+    .card { width: 9.54cm; height: 5.6cm; border: 1px solid #333; padding: 5px; display: flex; flex-direction: column; align-items: center; box-sizing: border-box; }
+    .photo { width: 3cm; height: 4cm; object-fit: cover; border: 1px solid #ccc; margin-top: 5px; }
+    .title { font-size: 16pt; font-weight: bold; }
+    .name { font-size: 22pt; font-weight: bold; margin-top: 5px; }
+</style>
+</head>
+<body>
+    <div id="drop-area">
+        <h3>1. 請選擇 Excel 檔案 (.xlsx)</h3>
+        <input type="file" id="upload" accept=".xlsx">
+        <p style="font-size: 0.9em; color: #666;">請確保 Excel 表頭為：編號、姓名、照片路徑</p>
+    </div>
+    <div id="container"></div>
+
+    <script>
+        document.getElementById('upload').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const data = new Uint8Array(e.target.result);
+                const workbook = XLSX.read(data, {type: 'array'});
+                const sheet = workbook.Sheets[workbook.SheetNames[0]];
+                const rows = XLSX.utils.sheet_to_json(sheet);
+                
+                const container = document.getElementById('container');
+                container.innerHTML = '';
+                
+                for (let i = 0; i < rows.length; i += 2) {
+                    let pairHtml = `<div class='card-pair'>`;
+                    for(let j=0; j<2; j++) {
+                        let r = rows[i+j];
+                        if(r) {
+                            pairHtml += `
+                            <div class='card'>
+                                <div class='title'>新建建物指定施工審驗</div>
+                                <div style="font-size:14pt;">審驗人員 (${r.編號 || ''})</div>
+                                <div class='name'>${r.姓名 || ''}</div>
+                                <img src='${r.照片路徑 || ''}' class='photo' onerror="this.style.display='none'">
+                            </div>`;
+                        } else {
+                            pairHtml += `<div class='card' style='border:none;'></div>`;
+                        }
+                    }
+                    pairHtml += `</div>`;
+                    container.innerHTML += pairHtml;
+                }
+            };
+            reader.readAsArrayBuffer(file);
+        });
+    </script>
+</body>
+</html>
