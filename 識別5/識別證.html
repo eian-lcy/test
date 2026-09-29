@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>工作台</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.3.0/exceljs.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+  <!-- 引入獨立的 CSS 檔案 -->
+  <link rel="stylesheet" href="style.css">
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              bg: '#F4F4F2',
+              card: '#FFFFFF',
+              cardalt: '#ECECE9',
+              text: '#222222',
+              muted: '#666666',
+              border: '#DCDCD8',
+              primary: '#1A2849',
+              primaryhover: '#131E38',
+              accentlight: '#E8ECF2'
+            }
+          },
+          fontFamily: {
+            sans: ['"Inter"', '"PingFang TC"', '"Source Han Sans TW"', '"Microsoft JhengHei"', 'sans-serif'],
+          },
+          borderRadius: {
+            '2xl': '16px',
+            '3xl': '20px',
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    /* ================= 識別證列印專用樣式 ================= */
+    .preview-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2rem;
+      padding: 1rem;
+    }
+
+    /* 修正 4：PDF 多出空白頁
+       原因：高度剛好 297mm 在轉檔時會因為小數點像素溢出而多擠出一頁。
+       解法：微調為 296.5mm，並設定最後一頁不要強制換頁 */
+    .a4-page {
+      width: 210mm;
+      height: 296.5mm;
+      background: white;
+      box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+      padding: 10mm;
+      box-sizing: border-box;
+      page-break-after: always;
+      overflow: hidden;
+    }
+
+    .a4-page:last-child {
+      page-break-after: auto;
+    }
+
+    /* 修正 3：每一列中間不要有空格
+       原因：原本使用 1fr 會自動把剩餘的垂直空間均分給每一列。
+       解法：強制指定每一列高度為 5.6cm，並使用 align-content: start 讓它們緊密往上靠齊 */
+    .grid-8 {
+      display: grid;
+      grid-template-columns: 9.54cm 9.54cm;
+      grid-auto-rows: 5.6cm;
+      gap: 0;
+      align-content: start;
+      justify-content: center;
+    }
+
+    .grid-4 {
+      display: grid;
+      grid-template-columns: 19.08cm;
+      grid-auto-rows: 5.6cm;
+      gap: 0;
+      align-content: start;
+      justify-content: center;
+    }
+
+    .double-badge-wrapper {
+      display: flex;
+      gap: 0;
+      height: 100%;
+    }
+
+    .double-badge-wrapper {
+      display: flex;
+      gap: 0;
+      height: 100%;
+    }
+
+    .double-badge-wrapper .badge {
+      flex: 1;
+    }
+
+    /* 修正 2：確保預覽與 PDF 皆為標楷體
+       原因：不同作業系統（Win/Mac）對標楷體的英文代稱不同，需完整列出 */
+    /* 單個識別證樣式 (強制使用標楷體) */
+    .badge {
+      width: 9.54cm;
+      min-width: 9.54cm;
+      flex-shrink: 0;
+      height: 5.6cm;
+      display: flex;
+      flex-direction: column;
+      box-sizing: border-box;
+      overflow: hidden;
+      background: #fff;
+      border: 1px dashed #ccc;
+    }
+
+    /* 【關鍵設定】：強制識別證內的所有元素使用標楷體，確保預覽與 PDF 輸出一致 */
+    .badge * {
+      font-family: "標楷體", "DFKai-sb", "BiauKai", serif !important;
+    }
+
+    .badge-header {
+      display: flex;
+      flex-direction: column;
+      width: 100%;
+    }
+
+    .badge-logo {
+      width: 100%;
+      height: auto;
+      display: block;
+    }
+
+    .badge-body {
+      display: flex;
+      flex-direction: row;
+      flex: 1;
+      padding: 10px;
+    }
+
+    .badge-info {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-start;
+      padding-top: 15px;
+      font-family: "標楷體", "DFKai-sb", "BiauKai", serif !important;
+    }
+
+    .text-title {
+      line-height: 1.2;
+    }
+
+    .text-subtitle {
+      margin-top: 8px;
+      line-height: 1;
+    }
+
+    .text-name {
+      font-size: 22pt;
+      font-weight: bold;
+      margin-top: 10px;
+      line-height: 1.2;
+    }
+
+    .badge-photo-wrapper {
+      width: 35%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding-left: 10px;
+    }
+
+    .badge-photo {
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
+    }
+
+    .badge-photo-empty {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background-color: #f0f0f0;
+      color: #999;
+      font-size: 12px;
+    }
+  </style>
+</head>
+
+<body
+  class="bg-brand-bg text-brand-text font-sans h-screen flex overflow-hidden selection:bg-brand-primary selection:text-white relative">
+
+  <!-- ================= 右側主工作區 ================= -->
+  <main class="flex-1 overflow-y-auto px-5 py-8 md:px-8 lg:px-10 relative z-10">
+    
+      <!-- ================= 識別證生成 ================= -->
+      <div id="tab-idcard" class="space-y-6 hidden fade-in">
+        <header class="space-y-2">
+          <div class="text-[11px] font-bold tracking-[1.5px] text-brand-muted uppercase">Badge Generator</div>
+          <h1 class="text-[32px] font-bold text-brand-text leading-tight">活動識別證生成</h1>
+        </header>
+
+        <div class="flex flex-col lg:flex-row gap-8">
+          <!-- 左側控制面板 (套用 bg-brand-card 與系統風格) -->
+          <div class="w-full lg:w-1/3 space-y-6">
+
+            <!-- 區塊 1：活動設定 -->
+            <section class="bg-brand-card rounded-2xl p-6 border border-brand-border shadow-sm">
+              <h2 class="text-[15px] font-bold mb-4 text-brand-text flex items-center gap-2"><i data-lucide="settings"
+                  class="w-4 h-4"></i> 活動與抬頭設定</h2>
+              <div class="space-y-4">
+                <div>
+                  <label class="block text-[13px] font-bold text-brand-text mb-1">上傳 Logo 圖片</label>
+                  <input type="file" id="badge-logoUpload" accept="image/*"
+                    class="w-full text-[13px] file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 border border-brand-border rounded-lg bg-white p-1">
+                </div>
+                <div>
+                  <label class="block text-[13px] font-bold text-brand-text mb-1">活動名稱</label>
+                  <input type="text" id="badge-eventName" value="新建建物指定施工審驗"
+                    class="w-full h-[42px] bg-white border border-brand-border rounded-lg px-3 py-2 text-[14px] text-brand-text focus:outline-none focus:border-brand-primary transition-all">
+                </div>
+                <div class="flex gap-4">
+                  <div class="flex-1">
+                    <label class="block text-[13px] font-bold text-brand-text mb-1">文字大小 (px)</label>
+                    <input type="number" id="badge-eventFontSize" value="16"
+                      class="w-full h-[42px] bg-white border border-brand-border rounded-lg px-3 py-2 text-[14px] text-brand-text focus:outline-none focus:border-brand-primary transition-all">
+                  </div>
+                  <div class="flex items-end pb-3">
+                    <label class="flex items-center gap-2 cursor-pointer tooltip" title="標題是否粗體">
+                      <input type="checkbox" id="badge-eventFontBold" checked
+                        class="w-4 h-4 rounded text-brand-primary border-brand-border focus:ring-brand-primary">
+                      <span class="text-[13px] font-bold text-brand-text">粗體</span>
+                    </label>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <!-- 區塊 2：人員與照片 -->
+            <section class="bg-brand-card rounded-2xl p-6 border border-brand-border shadow-sm">
+              <h2 class="text-[15px] font-bold mb-4 text-brand-text flex items-center gap-2"><i data-lucide="users"
+                  class="w-4 h-4"></i> 人員清冊與照片</h2>
+              <div class="space-y-4">
+                <div>
+                  <label class="block text-[13px] font-bold text-brand-text mb-1">上傳 Excel 清冊</label>
+                  <input type="file" id="badge-excelUpload" accept=".xlsx, .xls"
+                    class="w-full text-[13px] file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-emerald-50 file:text-emerald-700 hover:file:bg-emerald-100 border border-brand-border rounded-lg bg-white p-1">
+                </div>
+                <div id="badge-sheetSelectWrapper" class="hidden">
+                  <label class="block text-[13px] font-bold text-brand-text mb-1">選擇分頁</label>
+                  <select id="badge-sheetSelect"
+                    class="w-full h-[42px] bg-white border border-brand-border rounded-lg px-3 py-2 text-[14px] text-brand-text focus:outline-none focus:border-brand-primary transition-all"></select>
+                </div>
+                <div id="badge-columnMappingWrapper"
+                  class="hidden space-y-3 p-4 bg-brand-bg/50 rounded-lg border border-brand-border/60">
+                  <h3 class="text-[13px] font-bold text-brand-text flex items-center gap-1.5"><i data-lucide="link"
+                      class="w-3.5 h-3.5"></i> 欄位對應設定</h3>
+
+                  <div>
+                    <label class="block text-[12px] font-bold text-rose-500 mb-1">姓名欄位 (必選)</label>
+                    <select id="badge-colName"
+                      class="w-full bg-white border border-brand-border rounded p-1.5 text-[13px]"></select>
+                  </div>
+
+                  <!-- 升級版：前綴/後綴進階設定 -->
+                  <div class="bg-white border border-brand-border rounded-lg p-3 space-y-3 shadow-sm">
+                    <div>
+                      <label class="block text-[12px] font-bold text-brand-text mb-1">姓名前/後綴欄位 (選填)</label>
+                      <select id="badge-colId"
+                        class="w-full bg-slate-50 border border-brand-border rounded p-1.5 text-[13px]">
+                        <option value="">-- 無前/後綴 --</option>
+                      </select>
+                    </div>
+                    <!-- 【新增】加入 id 並加上 hidden 預設隱藏 -->
+                    <div id="badge-affixSettings" class="grid grid-cols-3 gap-2 hidden">
+                      <div>
+                        <label class="block text-[11px] font-bold text-brand-muted mb-1">位置</label>
+                        <select id="badge-affixPos"
+                          class="w-full bg-white border border-brand-border rounded p-1 text-[12px]">
+                          <option value="prefix">姓名<br>前</br></option>
+                          <option value="suffix">姓名<br>後</br></option>
+                        </select>
+                      </div>
+                      <div>
+                        <label class="block text-[11px] font-bold text-brand-muted mb-1">大小(pt)</label>
+                        <input type="number" id="badge-affixSize" value="22"
+                          class="w-full bg-white border border-brand-border rounded p-1 text-[12px]">
+                      </div>
+                      <div>
+                        <label class="block text-[11px] font-bold text-brand-muted mb-1">顏色</label>
+                        <input type="color" id="badge-affixColor" value="#434343"
+                          class="w-full h-[26px] bg-white border border-brand-border rounded p-0 cursor-pointer">
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label class="block text-[12px] font-bold text-brand-muted mb-1">照片檔名欄位 (選填)</label>
+                    <select id="badge-colPhoto"
+                      class="w-full bg-white border border-brand-border rounded p-1.5 text-[13px]">
+                      <option value="">-- 無照片檔名 --</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="pt-3 border-t border-brand-border/40">
+                  <label class="block text-[13px] font-bold text-brand-text mb-1">批次上傳相片 (請全選大頭照)</label>
+                  <input type="file" id="badge-photoUpload" accept="image/*" multiple
+                    class="w-full text-[13px] file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-amber-50 file:text-amber-700 hover:file:bg-amber-100 border border-brand-border rounded-lg bg-white p-1">
+                  <p id="badge-photoCount"
+                    class="text-[12px] font-bold text-emerald-600 mt-2 hidden flex items-center gap-1"><i
+                      data-lucide="check-circle" class="w-3.5 h-3.5"></i> 已載入 0 張照片</p>
+                </div>
+              </div>
+            </section>
+
+            <!-- 區塊 3：輸出 -->
+            <section class="bg-brand-card rounded-2xl p-6 border border-brand-border shadow-sm">
+              <h2 class="text-[15px] font-bold mb-4 text-brand-text flex items-center gap-2"><i data-lucide="printer"
+                  class="w-4 h-4"></i> 樣式與輸出</h2>
+              <div class="space-y-5">
+                <div>
+                  <label class="block text-[13px] font-bold text-brand-text mb-2">排版樣式</label>
+                  <div class="space-y-2 bg-white border border-brand-border rounded-lg p-3">
+                    <label class="flex items-center gap-2 cursor-pointer text-[13px] text-brand-text">
+                      <input type="radio" name="badge-layoutStyle" value="layout-8" checked
+                        class="text-brand-primary focus:ring-brand-primary">
+                      一頁 8 人 (兩欄四列)
+                    </label>
+                    <label class="flex items-center gap-2 cursor-pointer text-[13px] text-brand-text">
+                      <input type="radio" name="badge-layoutStyle" value="layout-4-fold"
+                        class="text-brand-primary focus:ring-brand-primary">
+                      一頁 4 人 (雙格同人，適合對折)
+                    </label>
+                  </div>
+                </div>
+                <div class="flex flex-col gap-3">
+                  <button id="badge-btnPreview"
+                    class="w-full py-2.5 bg-slate-800 hover:bg-slate-700 text-white text-[13px] font-bold rounded-lg transition-colors shadow-sm flex items-center justify-center gap-2"><i
+                      data-lucide="eye" class="w-4 h-4"></i> 產生預覽</button>
+                  <button id="badge-btnExportPDF"
+                    class="w-full py-2.5 bg-rose-600 hover:bg-rose-700 text-white text-[13px] font-bold rounded-lg transition-colors shadow-sm hidden flex items-center justify-center gap-2"><i
+                      data-lucide="download" class="w-4 h-4"></i> 匯出 PDF</button>
+                </div>
+              </div>
+            </section>
+          </div>
+
+          <!-- 右側預覽區 (深色桌面質感) -->
+          <div
+            class="w-full lg:w-2/3 bg-slate-200/80 rounded-2xl p-4 overflow-auto border border-brand-border shadow-inner flex justify-center items-start relative"
+            style="height: 85vh;">
+            <div id="badge-previewArea" class="preview-container">
+              <!-- 【新增】直接給一張預設的 A4 空白圖紙 -->
+              <div class="a4-page flex items-center justify-center">
+                <div class="text-slate-400 text-center flex flex-col items-center gap-3">
+                  <i data-lucide="file-badge-2" class="w-16 h-16 text-slate-300"></i>
+                  <p class="font-bold text-[14px]">請於左側載入資料並點擊「產生預覽」</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+  </main>
+
+  
+
+  <!-- 引入獨立的 JS 檔案 (請確保 data.js 先載入) -->
+  <script src="data.js"></script>
+  <script src="script.js"></script>
+
+</body>
+
+</html>
